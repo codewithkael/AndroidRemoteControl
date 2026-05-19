@@ -1,5 +1,5 @@
 package com.codewithkael.remotecontrol.service
 
 enum class CallServiceActions {
-    START,STOP
+    START, STOP, RESET
 }

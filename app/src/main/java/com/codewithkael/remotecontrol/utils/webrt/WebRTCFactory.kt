@@ -2,19 +2,21 @@ package com.codewithkael.remotecontrol.utils.webrt
 
 import android.app.Application
 import android.content.Context
+import android.content.Intent
+import android.media.projection.MediaProjection
 import com.codewithkael.remotecontrol.utils.MyApplication
 import com.codewithkael.remotecontrol.utils.webrt.IceServers.Companion.getIceServers
 import org.webrtc.AudioTrack
-import org.webrtc.Camera2Enumerator
-import org.webrtc.CameraVideoCapturer
 import org.webrtc.DefaultVideoDecoderFactory
 import org.webrtc.DefaultVideoEncoderFactory
 import org.webrtc.EglBase
 import org.webrtc.MediaConstraints
 import org.webrtc.PeerConnection
 import org.webrtc.PeerConnectionFactory
+import org.webrtc.ScreenCapturerAndroid
 import org.webrtc.SurfaceTextureHelper
 import org.webrtc.SurfaceViewRenderer
+import org.webrtc.VideoCapturer
 import org.webrtc.VideoTrack
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -28,8 +30,9 @@ class WebRTCFactory @Inject constructor(
     private val eglBaseContext = EglBase.create().eglBaseContext
     private val peerConnectionFactory by lazy { createPeerConnectionFactory() }
 
-    private var videoCapture: CameraVideoCapturer? = null
-    private val localVideoSource by lazy { peerConnectionFactory.createVideoSource(false) }
+    private var videoCapture: VideoCapturer? = null
+    private var surfaceTextureHelper: SurfaceTextureHelper? = null
+    private val localVideoSource by lazy { peerConnectionFactory.createVideoSource(true) }
     private val localAudioSource by lazy { peerConnectionFactory.createAudioSource(MediaConstraints()) }
 
     private val streamId = "${MyApplication.UserID}_stream"
@@ -44,9 +47,9 @@ class WebRTCFactory @Inject constructor(
     }
 
     // Public API
-    fun prepareLocalStream(view: SurfaceViewRenderer) {
+    fun prepareScreenSharing(intentData: Intent, view: SurfaceViewRenderer) {
         initSurfaceView(view)
-        startLocalVideo(view)
+        startScreenCapture(intentData, view)
     }
 
     fun initSurfaceView(view: SurfaceViewRenderer) {
@@ -63,8 +66,8 @@ class WebRTCFactory @Inject constructor(
         val connection = peerConnectionFactory.createPeerConnection(
             PeerConnection.RTCConfiguration(iceServer), observer
         )
-        localVideoTrack?.let { connection?.addTrack(it) }
-        localAudioTrack?.let { connection?.addTrack(it) }
+        localVideoTrack?.let { connection?.addTrack(it, listOf(streamId)) }
+        localAudioTrack?.let { connection?.addTrack(it, listOf(streamId)) }
         return connection?.let { RTCClientImpl(it, listener) }
     }
 
@@ -72,6 +75,9 @@ class WebRTCFactory @Inject constructor(
         runCatching { videoCapture?.stopCapture() }
         runCatching { videoCapture?.dispose() }
         videoCapture = null
+
+        runCatching { surfaceTextureHelper?.dispose() }
+        surfaceTextureHelper = null
 
         localAudioTrack?.let {
             it.setEnabled(false)
@@ -83,18 +89,22 @@ class WebRTCFactory @Inject constructor(
         localVideoTrack = null
     }
 
-    private fun startLocalVideo(surface: SurfaceViewRenderer) {
+    private fun startScreenCapture(intentData: Intent, surface: SurfaceViewRenderer) {
         if (localVideoTrack == null) {
-            val surfaceTextureHelper =
+            surfaceTextureHelper =
                 SurfaceTextureHelper.create(Thread.currentThread().name, eglBaseContext)
 
-            videoCapture = getVideoCapture()
+            videoCapture = ScreenCapturerAndroid(intentData, object : MediaProjection.Callback() {
+                override fun onStop() {
+                    super.onStop()
+                }
+            })
 
             videoCapture?.initialize(
                 surfaceTextureHelper, surface.context, localVideoSource.capturerObserver
             )
 
-            videoCapture?.startCapture(720, 480, 10)
+            videoCapture?.startCapture(720, 1280, 15)
 
             localVideoTrack =
                 peerConnectionFactory.createVideoTrack("${streamId}_video", localVideoSource)
@@ -105,20 +115,6 @@ class WebRTCFactory @Inject constructor(
             localAudioTrack =
                 peerConnectionFactory.createAudioTrack("${streamId}_audio", localAudioSource)
         }
-    }
-
-    fun switchCamera() {
-        videoCapture?.switchCamera(null)
-    }
-
-    private fun getVideoCapture(): CameraVideoCapturer {
-        val enumerator = Camera2Enumerator(application)
-        val deviceName = enumerator.deviceNames.firstOrNull { name ->
-            enumerator.isFrontFacing(name)
-        } ?: throw IllegalStateException("No camera found for front")
-
-        return enumerator.createCapturer(deviceName, null)
-            ?: throw IllegalStateException("Failed to create capturer for $deviceName")
     }
 
 

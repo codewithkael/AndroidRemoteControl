@@ -31,13 +31,16 @@ import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import org.webrtc.IceCandidate
 import org.webrtc.MediaStream
 import org.webrtc.PeerConnection
+import org.webrtc.RtpReceiver
 import org.webrtc.SessionDescription
 import org.webrtc.SurfaceViewRenderer
+import org.webrtc.VideoTrack
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -69,6 +72,7 @@ class CallService : Service() {
             when (it.action) {
                 CallServiceActions.START.name -> handleStartService()
                 CallServiceActions.STOP.name -> handleStopService()
+                CallServiceActions.RESET.name -> handleResetAction()
                 else -> Unit
             }
         }
@@ -83,14 +87,36 @@ class CallService : Service() {
         }
     }
 
+    private fun handleResetAction() {
+        sendDisconnectSignal()
+        resetWebRTC()
+    }
+
     private fun handleStopService() {
+        sendDisconnectSignal()
         isServiceRunning = false
-        rtcClient?.onDestroy()
-        rtcClient = null
+        resetWebRTC()
         firebaseClient.clear()
-        webRTCFactory.onDestroy()
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
+    }
+
+    private fun resetWebRTC() {
+        rtcClient?.onDestroy()
+        rtcClient = null
+        webRTCFactory.onDestroy()
+        rtcAudioManager.stop()
+        
+        participantId = ""
+        remoteSurface = null
+        remoteStream = null
+        
+        serviceScope.launch {
+            firebaseClient.removeSelfData()
+            callState.emit(false)
+        }
+        // Switch back to basic notification if we were sharing
+        startServiceWithNotification()
     }
 
     override fun onCreate() {
@@ -105,11 +131,15 @@ class CallService : Service() {
             startForeground(
                 MAIN_NOTIFICATION_ID,
                 mainNotification.build(),
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
             )
         } else {
             startForeground(MAIN_NOTIFICATION_ID, mainNotification.build())
         }
+    }
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        super.onTaskRemoved(rootIntent)
     }
 
     @SuppressLint("NewApi")
@@ -129,7 +159,7 @@ class CallService : Service() {
 
         val notificationChannel = NotificationChannel(
             "call_service_channel",
-            "Call Service Channel",
+            "Screen Share Service Channel",
             NotificationManager.IMPORTANCE_HIGH
         )
         notificationManager.createNotificationChannel(notificationChannel)
@@ -142,8 +172,8 @@ class CallService : Service() {
 
         mainNotification = NotificationCompat.Builder(this, "call_service_channel")
             .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle("WebRTC Call")
-            .setContentText("Call is active")
+            .setContentTitle("Remote Control")
+            .setContentText("Service is running in background")
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setOnlyAlertOnce(true)
@@ -154,13 +184,34 @@ class CallService : Service() {
     // WebRTC logic moved from ViewModel
     private fun observeIncomingSignals() {
         firebaseClient.observeIncomingSignals { signalDataModel ->
+            Log.d("RTC_LOG", "Incoming signal: ${signalDataModel.type}")
             when (signalDataModel.type) {
                 SignalDataModelTypes.INCOMING_CALL -> handleIncomingCall(signalDataModel)
                 SignalDataModelTypes.ACCEPT_CALL -> handleAcceptCall()
                 SignalDataModelTypes.OFFER -> handleReceivedOfferSdp(signalDataModel)
                 SignalDataModelTypes.ANSWER -> handleReceivedAnswerSdp(signalDataModel)
                 SignalDataModelTypes.ICE -> handleReceivedIceCandidate(signalDataModel)
+                SignalDataModelTypes.DISCONNECT -> handleDisconnect()
                 null -> Unit
+            }
+        }
+    }
+
+    private fun handleDisconnect() {
+        resetWebRTC()
+    }
+
+    fun sendDisconnectSignal() {
+        val target = participantId
+        if (target.isNotEmpty()) {
+            serviceScope.launch {
+                firebaseClient.updateParticipantDataModel(
+                    participantId = target,
+                    data = SignalDataModel(type = SignalDataModelTypes.DISCONNECT, participantId = userID)
+                )
+                // Wait 1.5 seconds then clear the signal to avoid conflicts
+                delay(1500)
+                firebaseClient.clearTargetData(target)
             }
         }
     }
@@ -238,6 +289,24 @@ class CallService : Service() {
                 }
             }
 
+            override fun onAddTrack(p0: RtpReceiver?, p1: Array<out MediaStream>?) {
+                super.onAddTrack(p0, p1)
+                Log.d(TAG, "onAddTrack: ${p0?.id()} kind: ${p0?.track()?.kind()}")
+                p0?.track()?.let { track ->
+                    if (track.kind() == "video") {
+                        val videoTrack = track as VideoTrack
+                        serviceScope.launch {
+                            remoteSurface?.let {
+                                Log.d(TAG, "onAddTrack: adding sink to surface")
+                                videoTrack.addSink(it)
+                            } ?: run {
+                                Log.d(TAG, "onAddTrack: remote surface not ready yet")
+                            }
+                        }
+                    }
+                }
+            }
+
             override fun onAddStream(p0: MediaStream?) {
                 super.onAddStream(p0)
                 p0?.let {
@@ -257,6 +326,7 @@ class CallService : Service() {
                 super.onConnectionChange(newState)
                 if (newState == PeerConnection.PeerConnectionState.CONNECTED) {
                     serviceScope.launch {
+                        rtcAudioManager.start(null)
                         firebaseClient.removeSelfData()
                     }
                 }
@@ -301,8 +371,16 @@ class CallService : Service() {
         return rtcClient
     }
 
-    fun startLocalStream(surface: SurfaceViewRenderer) {
-        webRTCFactory.prepareLocalStream(surface)
+    fun startScreenSharing(intentData: Intent, surface: SurfaceViewRenderer) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+            } else {
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
+            }
+            startForeground(MAIN_NOTIFICATION_ID, mainNotification.build(), type)
+        }
+        webRTCFactory.prepareScreenSharing(intentData, surface)
     }
 
     fun initRemoteSurfaceView(remoteSurface: SurfaceViewRenderer) {
@@ -313,7 +391,6 @@ class CallService : Service() {
         }
     }
 
-    fun switchCamera() = webRTCFactory.switchCamera()
 
     inner class CallServiceBinder : Binder() {
         fun getService(): CallService = this@CallService
@@ -340,6 +417,13 @@ class CallService : Service() {
         fun stopService(context: Context) {
             val intent = Intent(context, CallService::class.java).apply {
                 action = CallServiceActions.STOP.name
+            }
+            ContextCompat.startForegroundService(context, intent)
+        }
+
+        fun resetService(context: Context) {
+            val intent = Intent(context, CallService::class.java).apply {
+                action = CallServiceActions.RESET.name
             }
             ContextCompat.startForegroundService(context, intent)
         }

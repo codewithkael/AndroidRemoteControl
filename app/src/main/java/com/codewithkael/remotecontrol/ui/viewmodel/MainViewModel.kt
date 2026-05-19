@@ -60,16 +60,12 @@ class MainViewModel @Inject constructor() : ViewModel() {
         callService?.sendStartCallSignal(participantId)
     }
 
-    fun startLocalStream(surface: SurfaceViewRenderer) {
-        callService?.startLocalStream(surface)
+    fun startScreenSharing(intentData: Intent, surface: SurfaceViewRenderer) {
+        callService?.startScreenSharing(intentData, surface)
     }
 
     fun initRemoteSurfaceView(remoteSurface: SurfaceViewRenderer) {
         callService?.initRemoteSurfaceView(remoteSurface)
-    }
-
-    fun switchCamera() {
-        callService?.switchCamera()
     }
 
     fun unbindService(context: Context) {
@@ -77,5 +73,13 @@ class MainViewModel @Inject constructor() : ViewModel() {
             context.unbindService(serviceConnection)
             isBound = false
         }
+    }
+
+    fun stopService(context: Context) {
+        CallService.stopService(context)
+    }
+
+    fun resetConnection(context: Context) {
+        CallService.resetService(context)
     }
 }

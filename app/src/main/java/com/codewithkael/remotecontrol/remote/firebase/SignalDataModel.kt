@@ -7,5 +7,5 @@ data class SignalDataModel(
 )
 
 enum class SignalDataModelTypes {
-    INCOMING_CALL,ACCEPT_CALL,OFFER,ANSWER,ICE
+    INCOMING_CALL,ACCEPT_CALL,OFFER,ANSWER,ICE,DISCONNECT
 }

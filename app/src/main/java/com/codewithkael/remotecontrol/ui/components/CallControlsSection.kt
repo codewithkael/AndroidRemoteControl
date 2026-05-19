@@ -13,34 +13,54 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun CallControlsSection(
     modifier: Modifier = Modifier,
-    onCall: (String) -> Unit
+    onShare: (String) -> Unit,
+    onObserve: (String) -> Unit
 ) {
-    var callId by remember { mutableStateOf("") }
+    var targetId by remember { mutableStateOf("") }
 
-    Row(
+    Column(
         modifier = modifier
             .padding(horizontal = 12.dp, vertical = 8.dp)
             .background(Color.White, RoundedCornerShape(10.dp))
             .padding(12.dp),
-        verticalAlignment = Alignment.CenterVertically
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
         OutlinedTextField(
-            value = callId,
-            onValueChange = { callId = it },
-            label = { Text("Enter User ID") },
-            modifier = Modifier.weight(1f),
+            value = targetId,
+            onValueChange = { targetId = it },
+            label = { Text("Enter Target User ID") },
+            modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(12.dp)
         )
 
-        Spacer(modifier = Modifier.width(10.dp))
+        Spacer(modifier = Modifier.height(10.dp))
 
-        Button(
-            onClick = { onCall(callId) },
-            modifier = Modifier.height(56.dp),
-            shape = RoundedCornerShape(12.dp)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly
         ) {
-            Text("Call")
+            Button(
+                onClick = { onShare(targetId) },
+                modifier = Modifier
+                    .weight(1f)
+                    .height(48.dp),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text("Share Screen")
+            }
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            Button(
+                onClick = { onObserve(targetId) },
+                modifier = Modifier
+                    .weight(1f)
+                    .height(48.dp),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50))
+            ) {
+                Text("Observe")
+            }
         }
     }
 }
-

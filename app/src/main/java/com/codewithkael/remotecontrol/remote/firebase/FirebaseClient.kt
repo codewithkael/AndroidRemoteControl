@@ -47,6 +47,11 @@ class FirebaseClient @Inject constructor(
             .removeValue().await()
     }
 
+    suspend fun clearTargetData(participantId: String) {
+        database.child(FirebaseFieldNames.USERS).child(participantId).child(FirebaseFieldNames.DATA)
+            .removeValue().await()
+    }
+
     // Cleanup function to cancel all running coroutines
     fun clear() {
         coroutineScope.cancel()
