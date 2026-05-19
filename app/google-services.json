@@ -1,22 +1,22 @@
 {
   "project_info": {
-    "project_number": "893723939308",
-    "firebase_url": "https://productionwebrtc-default-rtdb.europe-west1.firebasedatabase.app",
-    "project_id": "productionwebrtc",
-    "storage_bucket": "productionwebrtc.firebasestorage.app"
+    "project_number": "358099083386",
+    "firebase_url": "https://remote-control-f7ca7-default-rtdb.europe-west1.firebasedatabase.app",
+    "project_id": "remote-control-f7ca7",
+    "storage_bucket": "remote-control-f7ca7.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:893723939308:android:9a6dc145aca46fd6c930c9",
+        "mobilesdk_app_id": "1:358099083386:android:3effde9e9c2288da5f1bc3",
         "android_client_info": {
-          "package_name": "com.codewithkael.productionwebrtc"
+          "package_name": "com.codewithkael.remotecontrol"
         }
       },
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyCDd4sFqXK0fjAg1rOXAi1K2LiuvkUqCo8"
+          "current_key": "AIzaSyCdM_xFkF0LBP1MnEMfjl6ORZi4F8aiIZc"
         }
       ],
       "services": {

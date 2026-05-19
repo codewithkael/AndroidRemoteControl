@@ -7,7 +7,7 @@ plugins {
 }
 
 android {
-    namespace = "com.codewithkael.productionwebrtc"
+    namespace = "com.codewithkael.remotecontrol"
     compileSdk {
         version = release(36) {
             minorApiLevel = 1
@@ -15,7 +15,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.codewithkael.productionwebrtc"
+        applicationId = "com.codewithkael.remotecontrol"
         minSdk = 24
         targetSdk = 36
         versionCode = 1

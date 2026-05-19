@@ -22,6 +22,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Production WebRTC"
+rootProject.name = "Remote Control"
 include(":app")
  

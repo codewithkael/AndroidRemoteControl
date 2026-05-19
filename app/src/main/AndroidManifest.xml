@@ -36,11 +36,11 @@
             </intent-filter>
         </activity>
         <service
-            android:name="com.codewithkael.productionwebrtc.service.CallService"
+            android:name="com.codewithkael.remotecontrol.service.CallService"
             android:foregroundServiceType="microphone|camera"
             tools:ignore="ForegroundServicePermission" />
         <receiver
-            android:name="com.codewithkael.productionwebrtc.service.CallBroadcastReceiver"
+            android:name="com.codewithkael.remotecontrol.service.CallBroadcastReceiver"
             android:directBootAware="true"
             android:enabled="true"
             android:exported="true">
