@@ -1,6 +1,7 @@
 package com.codewithkael.remotecontrol.utils
 
 import android.content.Context
+import com.codewithkael.remotecontrol.utils.prefs.PreferenceManager
 import com.google.firebase.database.DatabaseReference
 import com.google.firebase.database.FirebaseDatabase
 import com.google.gson.Gson
@@ -27,4 +28,7 @@ class AppModule {
 
     @Provides
     fun provideDatabaseReference(db:FirebaseDatabase): DatabaseReference = db.reference
+
+    @Provides
+    fun providePreferenceManager(@ApplicationContext context: Context): PreferenceManager = PreferenceManager(context)
 }

@@ -15,6 +15,7 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.codewithkael.remotecontrol.R
+import com.codewithkael.remotecontrol.models.GestureModel
 import com.codewithkael.remotecontrol.remote.firebase.FirebaseClient
 import com.codewithkael.remotecontrol.remote.firebase.SignalDataModel
 import com.codewithkael.remotecontrol.remote.firebase.SignalDataModelTypes
@@ -34,6 +35,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import org.webrtc.DataChannel
 import org.webrtc.IceCandidate
 import org.webrtc.MediaStream
 import org.webrtc.PeerConnection
@@ -62,6 +64,7 @@ class CallService : Service() {
     private var remoteStream: MediaStream? = null
 
     val callState: MutableStateFlow<Boolean> = MutableStateFlow(false)
+    val currentRoleState: MutableStateFlow<String> = MutableStateFlow("NONE") // NONE, SHARER, OBSERVER
 
     //service section
     private lateinit var mainNotification: NotificationCompat.Builder
@@ -114,6 +117,7 @@ class CallService : Service() {
         serviceScope.launch {
             firebaseClient.removeSelfData()
             callState.emit(false)
+            currentRoleState.emit("NONE")
         }
         // Switch back to basic notification if we were sharing
         startServiceWithNotification()
@@ -226,6 +230,7 @@ class CallService : Service() {
         this.participantId = participantId
         serviceScope.launch {
             callState.emit(true)
+            currentRoleState.emit("OBSERVER")
         }
         serviceScope.launch {
             firebaseClient.updateParticipantDataModel(
@@ -240,6 +245,7 @@ class CallService : Service() {
         this.participantId = dataModel.participantId
         serviceScope.launch {
             callState.emit(true)
+            currentRoleState.emit("SHARER")
         }
         serviceScope.launch {
             firebaseClient.updateParticipantDataModel(
@@ -322,6 +328,13 @@ class CallService : Service() {
                 }
             }
 
+            override fun onDataChannel(p0: DataChannel?) {
+                super.onDataChannel(p0)
+                p0?.let {
+                    (rtcClient as? RTCClientImpl)?.onDataChannelReceived(it)
+                }
+            }
+
             override fun onConnectionChange(newState: PeerConnection.PeerConnectionState?) {
                 super.onConnectionChange(newState)
                 if (newState == PeerConnection.PeerConnectionState.CONNECTED) {
@@ -367,8 +380,23 @@ class CallService : Service() {
                     )
                 }
             }
+
+            override fun onMessageReceived(message: String) {
+                runCatching {
+                    gson.fromJson(message, GestureModel::class.java)
+                }.onSuccess { gesture ->
+                    RemoteControlAccessibilityService.getInstance()?.executeGesture(gesture)
+                }.onFailure {
+                    Log.d(TAG, "onMessageReceived error: ${it.message}")
+                }
+            }
         })
         return rtcClient
+    }
+
+    fun sendGesture(gesture: GestureModel) {
+        val json = gson.toJson(gesture)
+        rtcClient?.sendGesture(json)
     }
 
     fun startScreenSharing(intentData: Intent, surface: SurfaceViewRenderer) {

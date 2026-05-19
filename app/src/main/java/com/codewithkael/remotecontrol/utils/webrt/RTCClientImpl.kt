@@ -1,10 +1,12 @@
 package com.codewithkael.remotecontrol.utils.webrt
 
 import android.util.Log
+import org.webrtc.DataChannel
 import org.webrtc.IceCandidate
 import org.webrtc.MediaConstraints
 import org.webrtc.PeerConnection
 import org.webrtc.SessionDescription
+import java.nio.ByteBuffer
 
 class RTCClientImpl(
     connection: PeerConnection,
@@ -15,6 +17,8 @@ class RTCClientImpl(
         private const val TAG = "RTC_LOG"
     }
 
+    private var dataChannel: DataChannel? = null
+
     private val mediaConstraint = MediaConstraints().apply {
         mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveVideo", "true"))
         mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveAudio", "true"))
@@ -22,8 +26,26 @@ class RTCClientImpl(
 
     override val peerConnection: PeerConnection = connection
 
+    init {
+        // We initialize data channel only for the offerer
+    }
+
     override fun offer() {
         Log.d(TAG, "Creating offer...")
+        // Create Data Channel
+        val dcInit = DataChannel.Init()
+        dataChannel = peerConnection.createDataChannel("remote_control", dcInit)
+        dataChannel?.registerObserver(object : DataChannel.Observer {
+            override fun onBufferedAmountChange(p0: Long) {}
+            override fun onStateChange() {
+                Log.d(TAG, "Data Channel State: ${dataChannel?.state()}")
+            }
+
+            override fun onMessage(buffer: DataChannel.Buffer) {
+                handleIncomingMessage(buffer)
+            }
+        })
+
         peerConnection.createOffer(object : MySdpObserver() {
             override fun onCreateSuccess(desc: SessionDescription?) {
                 super.onCreateSuccess(desc)
@@ -76,6 +98,41 @@ class RTCClientImpl(
         peerConnection.addIceCandidate(iceCandidate)
     }
 
+    override fun sendGesture(gesture: String) {
+        dataChannel?.let {
+            if (it.state() == DataChannel.State.OPEN) {
+                val buffer = ByteBuffer.wrap(gesture.toByteArray())
+                it.send(DataChannel.Buffer(buffer, false))
+            } else {
+                Log.d(TAG, "sendGesture: Data channel not open, state: ${it.state()}")
+            }
+        } ?: run {
+            Log.d(TAG, "sendGesture: Data channel is null")
+        }
+    }
+
+    fun onDataChannelReceived(dc: DataChannel) {
+        Log.d(TAG, "onDataChannelReceived: ${dc.label()}")
+        this.dataChannel = dc
+        this.dataChannel?.registerObserver(object : DataChannel.Observer {
+            override fun onBufferedAmountChange(p0: Long) {}
+            override fun onStateChange() {
+                Log.d(TAG, "Data Channel State (Remote): ${dataChannel?.state()}")
+            }
+
+            override fun onMessage(buffer: DataChannel.Buffer) {
+                handleIncomingMessage(buffer)
+            }
+        })
+    }
+
+    private fun handleIncomingMessage(buffer: DataChannel.Buffer) {
+        val data = ByteArray(buffer.data.remaining())
+        buffer.data.get(data)
+        val message = String(data)
+        Log.d(TAG, "Received message from Data Channel: $message")
+        transferListener.onMessageReceived(message)
+    }
 
     override fun onDestroy() {
         Log.d(TAG, "Closing PeerConnection")
@@ -95,5 +152,6 @@ class RTCClientImpl(
         fun onIceGenerated(iceCandidate: IceCandidate)
         fun onOfferGenerated(sessionDescription: SessionDescription)
         fun onAnswerGenerated(sessionDescription: SessionDescription)
+        fun onMessageReceived(message: String)
     }
 }

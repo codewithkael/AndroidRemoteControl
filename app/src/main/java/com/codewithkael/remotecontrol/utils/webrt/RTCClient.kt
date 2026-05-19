@@ -12,5 +12,6 @@ interface RTCClient {
     fun onRemoteSessionReceived(sessionDescription: SessionDescription)
     fun onIceCandidateReceived(iceCandidate: IceCandidate)
     fun onLocalIceCandidateGenerated(iceCandidate: IceCandidate)
+    fun sendGesture(gesture: String)
 
 }

@@ -34,10 +34,19 @@ fun MainScreen() {
 
     val viewModel: MainViewModel = hiltViewModel()
     val callState by viewModel.callState.collectAsState()
+    val roleFromService by viewModel.currentRole.collectAsState()
     val context = LocalContext.current
 
     var currentRole by remember { mutableStateOf("NONE") } // NONE, SHARER, OBSERVER
+    var isObserverFullScreen by remember { mutableStateOf(false) }
     var screenCaptureIntent by remember { mutableStateOf<android.content.Intent?>(null) }
+
+    // Sync currentRole with service state on start
+    LaunchedEffect(roleFromService) {
+        if (roleFromService != "NONE") {
+            currentRole = roleFromService
+        }
+    }
 
     val screenCaptureLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -128,7 +137,8 @@ fun MainScreen() {
                             screenCaptureIntent = null
                             viewModel.resetConnection(context)
                         },
-                        isSharing = callState
+                        isSharing = callState,
+                        checkAccessibility = { viewModel.isAccessibilityServiceEnabled(context) }
                     )
                 }
                 "OBSERVER" -> {
@@ -141,17 +151,23 @@ fun MainScreen() {
                             viewModel.sendStartCallSignal(targetId)
                         },
                         isObserving = callState,
-                        onRemoteSurfaceReady = { viewModel.initRemoteSurfaceView(it) }
+                        onRemoteSurfaceReady = { viewModel.initRemoteSurfaceView(it) },
+                        onGesture = { viewModel.sendGesture(it) },
+                        shouldShowHint = viewModel.shouldShowFullScreenHint(),
+                        onDontShowAgain = { viewModel.setDontShowFullScreenHintAgain() },
+                        onFullScreenChange = { isObserverFullScreen = it }
                     )
                 }
             }
         }
 
-        FooterSection(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 5.dp, vertical = 10.dp)
-        )
+        if (!isObserverFullScreen) {
+            FooterSection(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 5.dp, vertical = 10.dp)
+            )
+        }
     }
 
     // Handle SurfaceView for Sharer off-screen or invisible if needed by WebRTC
